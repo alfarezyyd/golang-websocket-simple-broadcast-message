@@ -1,0 +1,39 @@
+package main
+
+type Broadcast struct {
+	allClient        map[*Client]bool
+	broadcastMessage chan []byte
+	registerClient   chan *Client
+	unregisterClient chan *Client
+}
+
+func NewBroadcast() *Broadcast {
+	return &Broadcast{
+		allClient:        make(map[*Client]bool),
+		broadcastMessage: make(chan []byte),
+		registerClient:   make(chan *Client),
+		unregisterClient: make(chan *Client),
+	}
+}
+func (b *Broadcast) Run() {
+	for {
+		select {
+		case newClient := <-b.registerClient:
+			b.allClient[newClient] = true
+		case clientData := <-b.unregisterClient:
+			if !b.allClient[clientData] {
+				delete(b.allClient, clientData)
+				close(clientData.sendMessage)
+			}
+		case messageData := <-b.broadcastMessage:
+			for clientData := range b.allClient {
+				select {
+				case clientData.sendMessage <- messageData:
+				default:
+					close(clientData.sendMessage)
+					delete(b.allClient, clientData)
+				}
+			}
+		}
+	}
+}
