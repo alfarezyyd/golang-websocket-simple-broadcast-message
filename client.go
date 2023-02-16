@@ -15,7 +15,7 @@ const (
 	writeDeadline = 10 * time.Second
 )
 
-var updgraderConn = &websocket.Upgrader{}
+var upgraderConn = &websocket.Upgrader{}
 
 type Client struct {
 	clientBroadcast *Broadcast
@@ -26,8 +26,7 @@ type Client struct {
 func (c *Client) readPump() {
 	defer func() {
 		c.clientBroadcast.unregisterClient <- c
-		err := c.websocketConn.Close()
-		helper.PanicIfError(err)
+		c.websocketConn.Close()
 	}()
 
 	err := c.websocketConn.SetReadDeadline(time.Now().Add(pongWait))
@@ -58,7 +57,6 @@ func (c *Client) writePump() {
 		newTicker.Stop()
 		c.websocketConn.Close()
 	}()
-
 	for {
 		select {
 		case messageData, stateData := <-c.sendMessage:
@@ -66,10 +64,13 @@ func (c *Client) writePump() {
 			helper.PanicIfError(err)
 			if !stateData {
 				log.Println("Close the channel")
+				c.websocketConn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
+
 			err = c.websocketConn.WriteMessage(websocket.TextMessage, messageData)
-			helper.PanicIfError(err)
+			helper.LogIfError(err)
+
 			err = c.websocketConn.SetWriteDeadline(time.Time{})
 			helper.PanicIfError(err)
 		case <-newTicker.C:
@@ -85,7 +86,7 @@ func (c *Client) writePump() {
 }
 
 func serveWs(broadcast *Broadcast, w http.ResponseWriter, r *http.Request) {
-	websocketConn, err := updgraderConn.Upgrade(w, r, nil)
+	websocketConn, err := upgraderConn.Upgrade(w, r, nil)
 	helper.PanicIfError(err)
 
 	newClient := &Client{
